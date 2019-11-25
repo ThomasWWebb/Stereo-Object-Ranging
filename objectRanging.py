@@ -12,33 +12,33 @@ stereo_camera_baseline_m = 0.2090607502
 image_centre_h = 262.0;
 image_centre_w = 474.5;
 
-def project_disparity_to_3d(disparity, x, y):
-
-    points = [];
+def project_disparity_to_3d(disparity, left, top, width, height):
 
     f = camera_focal_length_px;
     B = stereo_camera_baseline_m;
 
-    # assume a minimal disparity of 2 pixels is possible to get Zmax
-    # and then we get reasonable scaling in X and Y output if we change
-    # Z to Zmax in the lines X = ....; Y = ...; below
+    disparitySum = 0
+    pixelCount = 0
 
-    # Zmax = ((f * B) / 2);
+    if top + height > len(disparity):
+        height = len(disparity) - top
+    if left + width > len(disparity[0]):
+        width = len(disparity[0]) - left
+        
 
-    if (disparity[y,x] > 0):
+    for yStepper in range(0, height):
+        for xStepper in range(0, width):
+            disparitySum += disparity[top + yStepper, left + xStepper]
+            pixelCount += 1
 
-        Z = (f * B) / disparity[y,x];
+    disparityAvg = disparitySum / pixelCount
 
-        X = ((x - image_centre_w) * Z) / f;
-        Y = ((y - image_centre_h) * Z) / f;
+    if (disparityAvg > 0):
 
-        points.append([X,Y,Z]);
+        Z = (f * B) / disparityAvg;
+        return Z
 
-        print(points)
-    else:
-        points.append([0,0,-1])
-
-    return points;
+    return 0;
 
 def calculateDisparity(full_path_filename_left):
 
@@ -54,9 +54,6 @@ def calculateDisparity(full_path_filename_left):
 
         imgL = cv2.imread(full_path_filename_left, cv2.IMREAD_COLOR)
         imgR = cv2.imread(full_path_filename_right, cv2.IMREAD_COLOR)
-
-        print("-- files loaded successfully");
-        print();
 
         grayL = cv2.cvtColor(imgL,cv2.COLOR_BGR2GRAY);
         grayR = cv2.cvtColor(imgR,cv2.COLOR_BGR2GRAY);
@@ -87,9 +84,6 @@ def calculateDisparity(full_path_filename_left):
         _, disparity = cv2.threshold(disparity,0, max_disparity * 16, cv2.THRESH_TOZERO);
         disparity_scaled = (disparity / 16.).astype(np.uint8);
 
-        # crop disparity to chop out left part where there are with no disparity
-        # as this area is not seen by both cameras and also
-        # chop out the bottom area (where we see the front of car bonnet)
 
         if (crop_disparity):
             width = np.size(disparity_scaled, 1);
@@ -101,8 +95,6 @@ def calculateDisparity(full_path_filename_left):
         image = (disparity_scaled * (256. / max_disparity)).astype(np.uint8)
 
         cv2.imshow("disparity", image);
-
-        print(disparity_scaled)
 
         return disparity_scaled
 
@@ -265,7 +257,6 @@ for file in glob.glob("C:/Users/thoma/Documents/Vision/TTBB-durham-02-10-17-sub1
 
     disparityImg = calculateDisparity(file)
 
-    # draw resulting detections on image
     for detected_object in range(0, len(boxes)):
         box = boxes[detected_object]
         left = box[0]
@@ -274,11 +265,9 @@ for file in glob.glob("C:/Users/thoma/Documents/Vision/TTBB-durham-02-10-17-sub1
         height = box[3]
         right = left + width
         bottom = top + height
-        x = left+(width//2)
-        y = top+(height//2)
-        x += disparityImg[y, x]
-        points = project_disparity_to_3d(disparityImg, left+(width//2), top+(height//2))
-        distance =  round(abs(points[0][2]), 3)
+        
+        depth = project_disparity_to_3d(disparityImg, left,top, width, height)
+        distance =  round(abs(depth), 3)
         drawPred(frame, classes[classIDs[detected_object]], confidences[detected_object], left, top, right, bottom, (255, 178, 50), distance)
 
     # Put efficiency information. The function getPerfProfile returns the overall time for inference(t) and the timings for each of the layers(in layersTimes)
