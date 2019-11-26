@@ -24,14 +24,19 @@ def project_disparity_to_3d(disparity, left, top, width, height):
         height = len(disparity) - top
     if left + width > len(disparity[0]):
         width = len(disparity[0]) - left
-        
 
-    for yStepper in range(0, height):
-        for xStepper in range(0, width):
-            disparitySum += disparity[top + yStepper, left + xStepper]
+    subWidth = width // 8
+    subHeight = height // 8
+    
+
+    for yStepper in range(subHeight, height - subHeight):
+        for xStepper in range(subWidth, width - subWidth):
+            disparitySum += abs(disparity[top + yStepper, left + xStepper])
             pixelCount += 1
 
     disparityAvg = disparitySum / pixelCount
+
+    cv2.rectangle(disparity, (left+ subWidth, top+subHeight), (left+width+subWidth, top + height - subHeight), (255, 178, 50), 3)
 
     if (disparityAvg > 0):
 
@@ -58,43 +63,20 @@ def calculateDisparity(full_path_filename_left):
         grayL = cv2.cvtColor(imgL,cv2.COLOR_BGR2GRAY);
         grayR = cv2.cvtColor(imgR,cv2.COLOR_BGR2GRAY);
 
-        # perform preprocessing - raise to the power, as this subjectively appears
-        # to improve subsequent disparity calculation
-
         grayL = np.power(grayL, 0.75).astype('uint8');
         grayR = np.power(grayR, 0.75).astype('uint8');
 
-        # compute disparity image from undistorted and rectified stereo images
-        # that we have loaded
-        # (which for reasons best known to the OpenCV developers is returned scaled by 16)
-
         disparity = stereoProcessor.compute(grayL,grayR);
 
-        # filter out noise and speckles (adjust parameters as needed)!!!!
-
-        dispNoiseFilter = 5; # increase for more agressive filtering
+        dispNoiseFilter = 5;
         cv2.filterSpeckles(disparity, 0, 4000, max_disparity - dispNoiseFilter);
-
-        # scale the disparity to 8-bit for viewing
-        # divide by 16 and convert to 8-bit image (then range of values should
-        # be 0 -> max_disparity) but in fact is (-1 -> max_disparity - 1)
-        # so we fix this also using a initial threshold between 0 and max_disparity
-        # as disparity=-1 means no disparity available
 
         _, disparity = cv2.threshold(disparity,0, max_disparity * 16, cv2.THRESH_TOZERO);
         disparity_scaled = (disparity / 16.).astype(np.uint8);
 
-
         if (crop_disparity):
             width = np.size(disparity_scaled, 1);
             disparity_scaled = disparity_scaled[0:390,135:width];
-
-        # display image (scaling it to the full 0->255 range based on the number
-        # of disparities in use for the stereo part)
-
-        image = (disparity_scaled * (256. / max_disparity)).astype(np.uint8)
-
-        cv2.imshow("disparity", image);
 
         return disparity_scaled
 
@@ -104,31 +86,11 @@ def calculateDisparity(full_path_filename_left):
 
 ################################################################################
 
-keep_processing = True
-
-# parse command line arguments for camera ID or video file, and YOLO files
-parser = argparse.ArgumentParser(description='Perform ' + sys.argv[0] + ' example operation on incoming camera/video image')
-parser.add_argument("-c", "--camera_to_use", type=int, help="specify camera to use", default=0)
-parser.add_argument("-r", "--rescale", type=float, help="rescale image by this factor", default=1.0)
-parser.add_argument("-fs", "--fullscreen", action='store_true', help="run in full screen mode")
-parser.add_argument('video_file', metavar='video_file', type=str, nargs='?', help='specify optional video file')
-parser.add_argument("-cl", "--class_file", type=str, help="list of classes", default='coco.names')
-parser.add_argument("-cf", "--config_file", type=str, help="network config", default='yolov3.cfg')
-parser.add_argument("-w", "--weights_file", type=str, help="network weights", default='yolov3.weights')
-
-args = parser.parse_args()
-
-################################################################################
 # dummy on trackbar callback function
 def on_trackbar(val):
     return
 
 #####################################################################
-# Draw the predicted bounding box on the specified image
-# image: image detection performed on
-# class_name: string name of detected object_detection
-# left, top, right, bottom: rectangle parameters for detection
-# colour: to draw detection rectangle in
 
 def drawPred(image, class_name, confidence, left, top, right, bottom, colour, distance):
     cv2.rectangle(image, (left, top), (right, bottom), colour, 3)
@@ -181,8 +143,6 @@ def postprocess(image, results, threshold_confidence, threshold_nms):
                 confidences.append(float(confidence))
                 boxes.append([left, top, width, height])
 
-    # Perform non maximum suppression to eliminate redundant overlapping boxes with
-    # lower confidences
     classIds_nms = []
     confidences_nms = []
     boxes_nms = []
@@ -194,7 +154,6 @@ def postprocess(image, results, threshold_confidence, threshold_nms):
         confidences_nms.append(confidences[i])
         boxes_nms.append(boxes[i])
 
-    # return post processed lists of classIds, confidences and bounding boxes
     return (classIds_nms, confidences_nms, boxes_nms)
 
 def getOutputsNames(net):
@@ -206,12 +165,12 @@ nmsThreshold = 0.4   # Non-maximum suppression threshold
 inpWidth = 416       # Width of network's input image
 inpHeight = 416      # Height of network's input image
 
-classesFile = args.class_file
+classesFile = 'coco.names'
 classes = None
 with open(classesFile, 'rt') as f:
     classes = f.read().rstrip('\n').split('\n')
 
-net = cv2.dnn.readNetFromDarknet(args.config_file, args.weights_file)
+net = cv2.dnn.readNetFromDarknet('yolov3.cfg', 'yolov3.weights')
 output_layer_names = getOutputsNames(net)
 net.setPreferableBackend(cv2.dnn.DNN_BACKEND_DEFAULT)
 net.setPreferableTarget(cv2.dnn.DNN_TARGET_OPENCL)
@@ -220,7 +179,7 @@ net.setPreferableTarget(cv2.dnn.DNN_TARGET_OPENCL)
 
 # define display window name + trackbar
 
-windowName = 'YOLOv3 object detection: ' + args.weights_file
+windowName = 'Object Ranging'
 cv2.namedWindow(windowName, cv2.WINDOW_NORMAL)
 trackbarName = 'reporting confidence > (x 0.01)'
 cv2.createTrackbar(trackbarName, windowName , 0, 100, on_trackbar)
@@ -230,17 +189,16 @@ cv2.createTrackbar(trackbarName, windowName , 0, 100, on_trackbar)
 cv2.namedWindow(windowName, cv2.WINDOW_NORMAL)
 
 for file in glob.glob("C:/Users/thoma/Documents/Vision/TTBB-durham-02-10-17-sub10/left-images/*.png"):
-    #file = "C:/Users/thoma/Documents/Vision/TTBB-durham-02-10-17-sub10/right-images/1506943061.478682_R.png"
+    #file = "C:/Users/thoma/Documents/Vision/TTBB-durham-02-10-17-sub10/left-images/1506943061.478682_L.png"
     image = cv2.imread(file)
 
-    # start a timer (to see how long processing and display takes)
     start_t = cv2.getTickCount()
 
     frame = image
 
     # rescale if specified
-    if (args.rescale != 1.0):
-        frame = cv2.resize(frame, (0, 0), fx=args.rescale, fy=args.rescale)
+    #if (args.rescale != 1.0):
+        #frame = cv2.resize(frame, (0, 0), fx=args.rescale, fy=args.rescale)
 
     # create a 4D tensor (OpenCV 'blob') from image frame (pixels scaled 0->1, image resized)
     tensor = cv2.dnn.blobFromImage(frame, 1/255, (inpWidth, inpHeight), [0,0,0], 1, crop=False)
@@ -265,10 +223,11 @@ for file in glob.glob("C:/Users/thoma/Documents/Vision/TTBB-durham-02-10-17-sub1
         height = box[3]
         right = left + width
         bottom = top + height
-        
-        depth = project_disparity_to_3d(disparityImg, left,top, width, height)
-        distance =  round(abs(depth), 3)
-        drawPred(frame, classes[classIDs[detected_object]], confidences[detected_object], left, top, right, bottom, (255, 178, 50), distance)
+
+        if left + width > 134 and top < 390:
+            depth = project_disparity_to_3d(disparityImg, left,top, width, height)
+            distance =  round(abs(depth), 3)
+            drawPred(frame, classes[classIDs[detected_object]], confidences[detected_object], left, top, right, bottom, (255, 178, 50), distance)
 
     # Put efficiency information. The function getPerfProfile returns the overall time for inference(t) and the timings for each of the layers(in layersTimes)
     t, _ = net.getPerfProfile()
@@ -277,8 +236,8 @@ for file in glob.glob("C:/Users/thoma/Documents/Vision/TTBB-durham-02-10-17-sub1
 
     # display image
     cv2.imshow(windowName,frame)
-    cv2.setWindowProperty(windowName, cv2.WND_PROP_FULLSCREEN,
-                            cv2.WINDOW_FULLSCREEN & args.fullscreen)
+    cv2.imshow("disparity", disparityImg);
+    cv2.setWindowProperty(windowName, cv2.WND_PROP_FULLSCREEN, False )
 
     # stop the timer and convert to ms. (to see how long processing and display takes)
     stop_t = ((cv2.getTickCount() - start_t)/cv2.getTickFrequency()) * 1000
@@ -289,14 +248,11 @@ for file in glob.glob("C:/Users/thoma/Documents/Vision/TTBB-durham-02-10-17-sub1
 
     # if user presses "x" then exit  / press "f" for fullscreen display
     if (key == ord('x')):
-        keep_processing = False
+        break
     elif (key == ord('f')):
         args.fullscreen = not(args.fullscreen)
 
-
-
-# close all windows
-#cv2.destroyAllWindows()
+cv2.destroyAllWindows()
 
 
 ################################################################################
