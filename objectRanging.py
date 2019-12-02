@@ -27,28 +27,27 @@ def calculateDepth(disparity, left, top, width, height):
         height = len(disparity) - top
 
     '''
-
-    if top + height > len(disparity):
-        height = len(disparity) - top
-    if left + width > len(disparity[0]):
-        width = len(disparity[0]) - left
-
+    #removing the outer 12.5% of the pixels from all sides
     subWidth = width // 8
     subHeight = height // 8
     
-
+    
     for yStepper in range(subHeight, height - subHeight):
         for xStepper in range(subWidth, width - subWidth):
             disparitySum += abs(disparity[top + yStepper, left + xStepper])
             pixelCount += 1
     '''
-    
+
+    '''
+    #using all pixels for disparity avg
     for yStepper in range(0, height - 1):
         for xStepper in range(0, width - 1):
             disparitySum += abs(disparity[top + yStepper, left + xStepper])
             pixelCount += 1
     disparityAvg = disparitySum / pixelCount
+    '''
 
+    disparityAvg = abs(disparity[top + height//2, left + width//2])
     #cv2.rectangle(disparity, (left+ subWidth, top+subHeight), (left+width+subWidth, top + height - subHeight), (255, 178, 50), 3)
 
     if (disparityAvg > 0):
