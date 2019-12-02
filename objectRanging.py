@@ -26,7 +26,7 @@ def calculateDepth(disparity, left, top, width, height):
     if (top+height >= len(disparity)):
         height = len(disparity) - top
 
-    '''
+
     #removing the outer 12.5% of the pixels from all sides
     subWidth = width // 8
     subHeight = height // 8
@@ -36,7 +36,6 @@ def calculateDepth(disparity, left, top, width, height):
         for xStepper in range(subWidth, width - subWidth):
             disparitySum += abs(disparity[top + yStepper, left + xStepper])
             pixelCount += 1
-    '''
 
     '''
     #using all pixels for disparity avg
@@ -44,10 +43,9 @@ def calculateDepth(disparity, left, top, width, height):
         for xStepper in range(0, width - 1):
             disparitySum += abs(disparity[top + yStepper, left + xStepper])
             pixelCount += 1
-    disparityAvg = disparitySum / pixelCount
-    '''
 
-    disparityAvg = abs(disparity[top + height//2, left + width//2])
+    '''
+    disparityAvg = disparitySum / pixelCount
     #cv2.rectangle(disparity, (left+ subWidth, top+subHeight), (left+width+subWidth, top + height - subHeight), (255, 178, 50), 3)
 
     if (disparityAvg > 0):
@@ -88,6 +86,12 @@ def calculateDisparity(full_path_filename_left, imgL):
         #raise to power to improve calculation
         grayL = np.power(grayL, 0.75).astype('uint8');
         grayR = np.power(grayR, 0.75).astype('uint8');
+
+        grayL = cv2.GaussianBlur(grayL, (3, 3), 2).astype('uint8');
+        grayR = cv2.GaussianBlur(grayR, (3, 3), 2).astype('uint8');
+
+        grayL = cv2.equalizeHist(grayL)
+        grayR = cv2.equalizeHist(grayR)
 
         
         #compute disparity 
