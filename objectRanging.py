@@ -12,13 +12,22 @@ stereo_camera_baseline_m = 0.2090607502
 image_centre_h = 262.0;
 image_centre_w = 474.5;
 
-def project_disparity_to_3d(disparity, left, top, width, height):
+def calculateDepth(disparity, left, top, width, height):
 
     f = camera_focal_length_px;
     B = stereo_camera_baseline_m;
 
     disparitySum = 0
     pixelCount = 0
+
+    #restricts the box within the size of the disparity image
+    if (left+width >= len(disparity[0])):
+        width = len(disparity[0]) - left
+    if (top+height >= len(disparity)):
+        height = len(disparity) - top
+    print("disp width = {}".format(len(disparity[0])))
+
+    '''
 
     if top + height > len(disparity):
         height = len(disparity) - top
@@ -33,10 +42,15 @@ def project_disparity_to_3d(disparity, left, top, width, height):
         for xStepper in range(subWidth, width - subWidth):
             disparitySum += abs(disparity[top + yStepper, left + xStepper])
             pixelCount += 1
-
+    '''
+    
+    for yStepper in range(0, height - 1):
+        for xStepper in range(0, width - 1):
+            disparitySum += abs(disparity[top + yStepper, left + xStepper])
+            pixelCount += 1
     disparityAvg = disparitySum / pixelCount
 
-    cv2.rectangle(disparity, (left+ subWidth, top+subHeight), (left+width+subWidth, top + height - subHeight), (255, 178, 50), 3)
+    #cv2.rectangle(disparity, (left+ subWidth, top+subHeight), (left+width+subWidth, top + height - subHeight), (255, 178, 50), 3)
 
     if (disparityAvg > 0):
 
@@ -45,36 +59,52 @@ def project_disparity_to_3d(disparity, left, top, width, height):
 
     return 0;
 
-def calculateDisparity(full_path_filename_left):
+##############################################################
 
+def calculateDisparity(full_path_filename_left, imgL):
+    #calculates the disparity image for a pair of stereo images
+    
     max_disparity = 128;
+    
     stereoProcessor = cv2.StereoSGBM_create(0, max_disparity, 21);
     crop_disparity = False
     full_path_filename_right = (full_path_filename_left.replace("_L", "_R")).replace("left", "right");
 
-    print(full_path_filename_left);
-    print(full_path_filename_right);
-
     if ('.png' in full_path_filename_left):
 
-        imgL = cv2.imread(full_path_filename_left, cv2.IMREAD_COLOR)
         imgR = cv2.imread(full_path_filename_right, cv2.IMREAD_COLOR)
+        '''
+        imgR = cv2.cvtColor(imgR, cv2.COLOR_BGR2YUV)
 
+        rgb = cv2.split(imgR)
+        rgb[0] = cv2.equalizeHist(rgb[0])
+        imgR = cv2.merge(rgb)
+
+        imgR = cv2.cvtColor(imgR, cv2.COLOR_YUV2BGR)
+        '''
+
+        #convert images to greyscale 
         grayL = cv2.cvtColor(imgL,cv2.COLOR_BGR2GRAY);
         grayR = cv2.cvtColor(imgR,cv2.COLOR_BGR2GRAY);
-
+        
+        #raise to power to improve calculation
         grayL = np.power(grayL, 0.75).astype('uint8');
         grayR = np.power(grayR, 0.75).astype('uint8');
 
+        
+        #compute disparity 
         disparity = stereoProcessor.compute(grayL,grayR);
-
+        
+        #reduce noise
         dispNoiseFilter = 5;
         cv2.filterSpeckles(disparity, 0, 4000, max_disparity - dispNoiseFilter);
 
         _, disparity = cv2.threshold(disparity,0, max_disparity * 16, cv2.THRESH_TOZERO);
         disparity_scaled = (disparity / 16.).astype(np.uint8);
 
+        
         if (crop_disparity):
+            #crops unique sections of each camera
             width = np.size(disparity_scaled, 1);
             disparity_scaled = disparity_scaled[0:390,135:width];
 
@@ -83,12 +113,6 @@ def calculateDisparity(full_path_filename_left):
     else:
             print("-- files skipped (perhaps one is missing or not PNG)");
             print();
-
-################################################################################
-
-# dummy on trackbar callback function
-def on_trackbar(val):
-    return
 
 #####################################################################
 
@@ -177,24 +201,28 @@ net.setPreferableTarget(cv2.dnn.DNN_TARGET_OPENCL)
 
 ################################################################################
 
-# define display window name + trackbar
+# define display window name
 
 windowName = 'Object Ranging'
 cv2.namedWindow(windowName, cv2.WINDOW_NORMAL)
-trackbarName = 'reporting confidence > (x 0.01)'
-cv2.createTrackbar(trackbarName, windowName , 0, 100, on_trackbar)
 
 ################################################################################
 
 cv2.namedWindow(windowName, cv2.WINDOW_NORMAL)
 
+
+#applies object detection and ranging to each pair of images in the dataset
 for file in glob.glob("C:/Users/thoma/Documents/Vision/TTBB-durham-02-10-17-sub10/left-images/*.png"):
-    #file = "C:/Users/thoma/Documents/Vision/TTBB-durham-02-10-17-sub10/left-images/1506943061.478682_L.png"
-    image = cv2.imread(file)
 
+    frame = cv2.imread(file)
+    '''
+    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2YUV)
+    rgb = cv2.split(frame)
+    rgb[0] = cv2.equalizeHist(rgb[0])
+    frame = cv2.merge(rgb)
+    frame = cv2.cvtColor(frame, cv2.COLOR_YUV2BGR)
+    '''
     start_t = cv2.getTickCount()
-
-    frame = image
 
     # rescale if specified
     #if (args.rescale != 1.0):
@@ -210,10 +238,13 @@ for file in glob.glob("C:/Users/thoma/Documents/Vision/TTBB-durham-02-10-17-sub1
     results = net.forward(output_layer_names)
 
     # remove the bounding boxes with low confidence
-    confThreshold = cv2.getTrackbarPos(trackbarName,windowName) / 100
+    confThreshold = 0
     classIDs, confidences, boxes = postprocess(frame, results, confThreshold, nmsThreshold)
+    
+    #compute the disparity image of the stereo pair
+    disparityImg = calculateDisparity(file, frame)
 
-    disparityImg = calculateDisparity(file)
+    boxDistances = []
 
     for detected_object in range(0, len(boxes)):
         box = boxes[detected_object]
@@ -224,9 +255,17 @@ for file in glob.glob("C:/Users/thoma/Documents/Vision/TTBB-durham-02-10-17-sub1
         right = left + width
         bottom = top + height
 
+        
+        #detectedObj = frame[top:bottom, left:right]
+        #if len(detectedObj) > 0 and len(detectedObj[0]) > 0:
+        #    cv2.imshow('object', detectedObj)
+        
+
         if left + width > 134 and top < 390:
-            depth = project_disparity_to_3d(disparityImg, left,top, width, height)
+            depth = calculateDepth(disparityImg, left,top, width, height)
             distance =  round(abs(depth), 3)
+            #if distance > 0:
+            boxDistances.append(distance)
             drawPred(frame, classes[classIDs[detected_object]], confidences[detected_object], left, top, right, bottom, (255, 178, 50), distance)
 
     # Put efficiency information. The function getPerfProfile returns the overall time for inference(t) and the timings for each of the layers(in layersTimes)
