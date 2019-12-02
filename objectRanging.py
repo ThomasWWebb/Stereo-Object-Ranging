@@ -19,6 +19,10 @@ def calculateDepth(disparity, left, top, width, height):
 
     disparitySum = 0
     pixelCount = 0
+
+    left = left - 135
+    if left < 0:
+        left = 0
     
     for yStepper in range(top, top + height):
         for xStepper in range(left, left + width):
@@ -68,7 +72,7 @@ def calculateDisparity(full_path_filename_left, imgL):
         
         #tutorial values
         filterLambda = 80000
-        sigma = 1.5
+        sigma = 1.2
         
         leftSide = cv2.StereoSGBM_create(0, max_disparity, 21)
         rightSide = cv2.ximgproc.createRightMatcher(leftSide)
@@ -90,7 +94,9 @@ def calculateDisparity(full_path_filename_left, imgL):
         _, disparity = cv2.threshold(disparity,0, max_disparity * 16, cv2.THRESH_TOZERO);
         disparity_scaled = (disparity / 16.).astype(np.uint8);
 
-        cv2.imshow("disparity", (disparity_scaled * (256. / max_disparity)).astype(np.uint8));
+        showDisparity = cv2.equalizeHist((disparity_scaled * (256. / max_disparity)).astype(np.uint8))
+
+        cv2.imshow("disparity", (showDisparity));
         
         if (crop_disparity):
             #crops unique sections of each camera
@@ -248,7 +254,8 @@ for file in glob.glob("C:/Users/thoma/Documents/Vision/TTBB-durham-02-10-17-sub1
     # display image
     cv2.imshow(windowName,frame)
     #cv2.imshow("disparity after", disparityImg);
-    cv2.imshow("disparity after", (disparityImg * (256. / 128)).astype(np.uint8));
+    showDisparity = cv2.equalizeHist((disparityImg * (256. / 128)).astype(np.uint8))
+    cv2.imshow("disparity after", (showDisparity));
     cv2.setWindowProperty(windowName, cv2.WND_PROP_FULLSCREEN, False )
 
     # stop the timer and convert to ms. (to see how long processing and display takes)
