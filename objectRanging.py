@@ -19,34 +19,16 @@ def calculateDepth(disparity, left, top, width, height):
 
     disparitySum = 0
     pixelCount = 0
-
-    #restricts the box within the size of the disparity image
-    if (left+width >= len(disparity[0])):
-        width = len(disparity[0]) - left
-    if (top+height >= len(disparity)):
-        height = len(disparity) - top
-
-
-    #removing the outer 12.5% of the pixels from all sides
-    subWidth = width // 8
-    subHeight = height // 8
     
-    
-    for yStepper in range(subHeight, height - subHeight):
-        for xStepper in range(subWidth, width - subWidth):
-            disparitySum += abs(disparity[top + yStepper, left + xStepper])
-            pixelCount += 1
+    for yStepper in range(top, top + height):
+        for xStepper in range(left, left + width):
+            if yStepper < len(disparity) and xStepper < len(disparity[0]):
+                disparitySum += abs(disparity[yStepper, xStepper])
+                pixelCount += 1
 
-    '''
-    #using all pixels for disparity avg
-    for yStepper in range(0, height - 1):
-        for xStepper in range(0, width - 1):
-            disparitySum += abs(disparity[top + yStepper, left + xStepper])
-            pixelCount += 1
-
-    '''
-    disparityAvg = disparitySum / pixelCount
-    #cv2.rectangle(disparity, (left+ subWidth, top+subHeight), (left+width+subWidth, top + height - subHeight), (255, 178, 50), 3)
+    disparityAvg = 0
+    if pixelCount:
+        disparityAvg = disparitySum / pixelCount
 
     if (disparityAvg > 0):
 
@@ -63,21 +45,12 @@ def calculateDisparity(full_path_filename_left, imgL):
     max_disparity = 128;
     
     stereoProcessor = cv2.StereoSGBM_create(0, max_disparity, 21);
-    crop_disparity = False
+    crop_disparity = True
     full_path_filename_right = (full_path_filename_left.replace("_L", "_R")).replace("left", "right");
 
     if ('.png' in full_path_filename_left):
 
         imgR = cv2.imread(full_path_filename_right, cv2.IMREAD_COLOR)
-        '''
-        imgR = cv2.cvtColor(imgR, cv2.COLOR_BGR2YUV)
-
-        rgb = cv2.split(imgR)
-        rgb[0] = cv2.equalizeHist(rgb[0])
-        imgR = cv2.merge(rgb)
-
-        imgR = cv2.cvtColor(imgR, cv2.COLOR_YUV2BGR)
-        '''
 
         #convert images to greyscale 
         grayL = cv2.cvtColor(imgL,cv2.COLOR_BGR2GRAY);
@@ -87,15 +60,28 @@ def calculateDisparity(full_path_filename_left, imgL):
         grayL = np.power(grayL, 0.75).astype('uint8');
         grayR = np.power(grayR, 0.75).astype('uint8');
 
-        grayL = cv2.GaussianBlur(grayL, (3, 3), 2).astype('uint8');
-        grayR = cv2.GaussianBlur(grayR, (3, 3), 2).astype('uint8');
-
+        
+        #to improve contrast
         grayL = cv2.equalizeHist(grayL)
         grayR = cv2.equalizeHist(grayR)
 
         
-        #compute disparity 
-        disparity = stereoProcessor.compute(grayL,grayR);
+        #tutorial values
+        filterLambda = 80000
+        sigma = 1.5
+        
+        leftSide = cv2.StereoSGBM_create(0, max_disparity, 21)
+        rightSide = cv2.ximgproc.createRightMatcher(leftSide)
+        wls = cv2.ximgproc.createDisparityWLSFilter(leftSide)
+        wls.setLambda(filterLambda)
+        wls.setSigmaColor(sigma)
+
+        disparityL = leftSide.compute(grayL, grayR)
+
+        cv2.imshow("disparity before", disparityL);
+        disparityR = rightSide.compute(grayR, grayL)
+
+        disparity = wls.filter(disparityL, grayL, None, disparityR)
         
         #reduce noise
         dispNoiseFilter = 5;
@@ -104,6 +90,7 @@ def calculateDisparity(full_path_filename_left, imgL):
         _, disparity = cv2.threshold(disparity,0, max_disparity * 16, cv2.THRESH_TOZERO);
         disparity_scaled = (disparity / 16.).astype(np.uint8);
 
+        cv2.imshow("disparity", (disparity_scaled * (256. / max_disparity)).astype(np.uint8));
         
         if (crop_disparity):
             #crops unique sections of each camera
@@ -215,20 +202,10 @@ cv2.namedWindow(windowName, cv2.WINDOW_NORMAL)
 
 #applies object detection and ranging to each pair of images in the dataset
 for file in glob.glob("C:/Users/thoma/Documents/Vision/TTBB-durham-02-10-17-sub10/left-images/*.png"):
-
+    #file = "C:/Users/thoma/Documents/Vision/TTBB-durham-02-10-17-sub10/left-images/1506942473.484027_L.png"
     frame = cv2.imread(file)
-    '''
-    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2YUV)
-    rgb = cv2.split(frame)
-    rgb[0] = cv2.equalizeHist(rgb[0])
-    frame = cv2.merge(rgb)
-    frame = cv2.cvtColor(frame, cv2.COLOR_YUV2BGR)
-    '''
-    start_t = cv2.getTickCount()
 
-    # rescale if specified
-    #if (args.rescale != 1.0):
-        #frame = cv2.resize(frame, (0, 0), fx=args.rescale, fy=args.rescale)
+    start_t = cv2.getTickCount()
 
     # create a 4D tensor (OpenCV 'blob') from image frame (pixels scaled 0->1, image resized)
     tensor = cv2.dnn.blobFromImage(frame, 1/255, (inpWidth, inpHeight), [0,0,0], 1, crop=False)
@@ -256,17 +233,10 @@ for file in glob.glob("C:/Users/thoma/Documents/Vision/TTBB-durham-02-10-17-sub1
         height = box[3]
         right = left + width
         bottom = top + height
-
         
-        #detectedObj = frame[top:bottom, left:right]
-        #if len(detectedObj) > 0 and len(detectedObj[0]) > 0:
-        #    cv2.imshow('object', detectedObj)
-        
-
-        if left + width > 134 and top < 390:
+        if left + width // 2 >= 135 and top + height // 2 <= 390:   
             depth = calculateDepth(disparityImg, left,top, width, height)
             distance =  round(abs(depth), 3)
-            #if distance > 0:
             boxDistances.append(distance)
             drawPred(frame, classes[classIDs[detected_object]], confidences[detected_object], left, top, right, bottom, (255, 178, 50), distance)
 
@@ -277,7 +247,8 @@ for file in glob.glob("C:/Users/thoma/Documents/Vision/TTBB-durham-02-10-17-sub1
 
     # display image
     cv2.imshow(windowName,frame)
-    cv2.imshow("disparity", disparityImg);
+    #cv2.imshow("disparity after", disparityImg);
+    cv2.imshow("disparity after", (disparityImg * (256. / 128)).astype(np.uint8));
     cv2.setWindowProperty(windowName, cv2.WND_PROP_FULLSCREEN, False )
 
     # stop the timer and convert to ms. (to see how long processing and display takes)
