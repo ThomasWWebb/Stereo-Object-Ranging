@@ -25,7 +25,6 @@ def calculateDepth(disparity, left, top, width, height):
         width = len(disparity[0]) - left
     if (top+height >= len(disparity)):
         height = len(disparity) - top
-    print("disp width = {}".format(len(disparity[0])))
 
     '''
 
