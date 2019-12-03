@@ -3,6 +3,8 @@ import argparse
 import sys
 import math
 import numpy as np
+import scipy
+from scipy import stats
 import glob
 
 camera_focal_length_px = 399.9745178222656
@@ -23,7 +25,8 @@ def calculateDepth(disparity, left, top, width, height):
     left = left - 135
     if left < 0:
         left = 0
-    
+
+    '''
     for yStepper in range(top, top + height):
         for xStepper in range(left, left + width):
             if yStepper < len(disparity) and xStepper < len(disparity[0]):
@@ -33,10 +36,13 @@ def calculateDepth(disparity, left, top, width, height):
     disparityAvg = 0
     if pixelCount:
         disparityAvg = disparitySum / pixelCount
+    '''
 
-    if (disparityAvg > 0):
+    avg = np.nanmedian(disparity[top:top+height, left:left+width], None)
+    
+    if (avg > 0):
 
-        Z = (f * B) / disparityAvg;
+        Z = (f * B) / avg;
         return Z
 
     return 0;
@@ -208,7 +214,7 @@ cv2.namedWindow(windowName, cv2.WINDOW_NORMAL)
 
 #applies object detection and ranging to each pair of images in the dataset
 for file in glob.glob("C:/Users/thoma/Documents/Vision/TTBB-durham-02-10-17-sub10/left-images/*.png"):
-    #file = "C:/Users/thoma/Documents/Vision/TTBB-durham-02-10-17-sub10/left-images/1506942473.484027_L.png"
+    file = "C:/Users/thoma/Documents/Vision/TTBB-durham-02-10-17-sub10/left-images/1506942473.484027_L.png"
     frame = cv2.imread(file)
 
     start_t = cv2.getTickCount()
@@ -231,6 +237,8 @@ for file in glob.glob("C:/Users/thoma/Documents/Vision/TTBB-durham-02-10-17-sub1
 
     boxDistances = []
 
+    minDist = math.inf
+
     for detected_object in range(0, len(boxes)):
         box = boxes[detected_object]
         left = box[0]
@@ -243,9 +251,12 @@ for file in glob.glob("C:/Users/thoma/Documents/Vision/TTBB-durham-02-10-17-sub1
         if left + width // 2 >= 135 and top + height // 2 <= 390:   
             depth = calculateDepth(disparityImg, left,top, width, height)
             distance =  round(abs(depth), 3)
+            if distance < minDist:
+                minDist = distance
             boxDistances.append(distance)
             drawPred(frame, classes[classIDs[detected_object]], confidences[detected_object], left, top, right, bottom, (255, 178, 50), distance)
 
+    print("minDist is {}".format(minDist))
     # Put efficiency information. The function getPerfProfile returns the overall time for inference(t) and the timings for each of the layers(in layersTimes)
     t, _ = net.getPerfProfile()
     label = 'Inference time: %.2f ms' % (t * 1000.0 / cv2.getTickFrequency())
