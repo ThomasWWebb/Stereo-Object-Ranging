@@ -1,4 +1,4 @@
-#Autonomous Vehicles: Using Stereo Vision for Object Distance Ranging
+# Autonomous Vehicles: Using Stereo Vision for Object Distance Ranging
 
 An solution for correctly detecting pedestrians and vehicles within the scene in-front of a vehicle and estimates the range (distance in metres) to those objects. Provided with You Only Look Once - YOLO for object detection this implementation operates upon a provided dataset of stereo pairs of images from video sequences taken from a vehicle driving through Durham city. 
 
